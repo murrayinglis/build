@@ -338,13 +338,20 @@ function compile_uboot_target() {
 # Runs in the u-boot build tree, right after make.
 function report_uboot_spl_size_usage() {
 	[[ -f .config ]] || return 0
-	declare -i warn_percent="${UBOOT_SPL_SIZE_WARN_PERCENT:-90}"
+	# Validate the (user-supplied) threshold as a plain integer before any
+	# arithmetic context; a non-numeric value under `declare -i` / $(( )) would
+	# raise a bash error and could abort the build, which this report must not do.
+	declare -i warn_percent=90
+	[[ "${UBOOT_SPL_SIZE_WARN_PERCENT:-}" =~ ^[0-9]+$ ]] && warn_percent="${UBOOT_SPL_SIZE_WARN_PERCENT}"
 	declare stage prefix max_size bin
 	declare -i size limit percent
 	for stage in SPL TPL; do
 		prefix="${stage,,}"
 		max_size="$(sed -n "s/^CONFIG_${stage}_MAX_SIZE=//p" .config)"
 		[[ -n "${max_size}" ]] || continue
+		# Only evaluate a plain decimal or 0x-hex literal; skip anything else
+		# rather than letting $(( )) choke on a malformed .config value.
+		[[ "${max_size}" =~ ^(0[xX][0-9a-fA-F]+|[0-9]+)$ ]] || continue
 		limit=$((max_size))
 		((limit > 0)) || continue
 		# The linker enforces the limit on the image without the appended device tree
